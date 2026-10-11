@@ -77,9 +77,7 @@ import type { WidgetAliasFor } from './getWidget.tsx';
 import getWidget, {
   DEFAULT_BOOLEAN_WIDGET,
   getFieldTypeForWidget,
-  getWidgetKey,
   getWidgetType,
-  isStandardWidgetKey,
   resolveWidget,
 } from './getWidget.tsx';
 import getXxxOfKey from './getXxxOfKey.ts';
@@ -282,7 +280,6 @@ export {
   getUnionTypes,
   getVisibleErrors,
   getWidget,
-  getWidgetKey,
   getWidgetType,
   getXxxOfKey,
   getXxxOfOptions,
@@ -307,7 +304,6 @@ export {
   isPlainObject,
   isRootSchema,
   isSchemaObject,
-  isStandardWidgetKey,
   isWholeValueSelect,
   labelValue,
   localTimeToOffsetTime,
