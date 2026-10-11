@@ -58,7 +58,7 @@ import getOptionMatchingSimpleDiscriminator from './getOptionMatchingSimpleDiscr
 import getOptionUiSchema, { selectOptionUiSchema } from './getOptionUiSchema.ts';
 import getOptionValueFormat from './getOptionValueFormat.ts';
 import type { PresentationSource, PresentationSubject } from './getPresentationDeclaration.ts';
-import getPresentationDeclaration from './getPresentationDeclaration.ts';
+import getPresentationDeclaration, { WIDGET_FIELD_PRESENTATION } from './getPresentationDeclaration.ts';
 import getPropertySchema from './getPropertySchema.ts';
 import getSchemaOwnTypes from './getSchemaOwnTypes.ts';
 import getSchemaType from './getSchemaType.ts';
@@ -369,6 +369,7 @@ export {
   useTimeWidgetProps,
   utcToLocal,
   validationDataMerge,
+  WIDGET_FIELD_PRESENTATION,
   widgetAriaProps,
   withIdRefPrefix,
   bracketNameGenerator,
