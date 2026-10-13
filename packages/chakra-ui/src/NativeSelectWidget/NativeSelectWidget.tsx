@@ -3,7 +3,6 @@ import { useMemo } from 'react';
 import { NativeSelect } from '@chakra-ui/react';
 import type { FormContextType, IndexedEnumOptionType, RJSFSchema, StrictRJSFSchema, WidgetProps } from '@rjsf/utils';
 import {
-  ariaDescribedByIds,
   enumOptionsIndexForValue,
   enumOptionsValueForIndex,
   groupEnumOptions,
@@ -12,6 +11,7 @@ import {
   labelValue,
   logUnsupportedDefaultForEnum,
   SelectedOptionDescription,
+  widgetAriaProps,
 } from '@rjsf/utils';
 
 import { Field } from '../components/ui/field.tsx';
@@ -101,7 +101,7 @@ export default function NativeSelectWidget<
           onFocus={handleFocus}
           autoFocus={autofocus}
           value={formValue}
-          aria-describedby={ariaDescribedByIds(id)}
+          {...widgetAriaProps(props)}
         >
           {showPlaceholderOption ? (
             <option value='' disabled hidden>
