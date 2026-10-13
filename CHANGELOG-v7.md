@@ -59,6 +59,8 @@ should change the heading of the (upcoming) version to include a major version b
 - `UpDownWidget` reports `undefined` to `onFocus`/`onBlur` when the focused element is an increment or decrement trigger, where it reported the trigger's `''` ([#5379](https://github.com/rjsf-team/react-jsonschema-form/pull/5379))
 - **BREAKING CHANGE:** Fixed `AltDateWidget`'s date parts having no accessible name: each select is named by the field's label and the translated part, such as `When, year`, even when the label is hidden, and described by the field's description, help and errors. `SelectWidget` gives the `aria-label` and `aria-describedby` it is passed, or its own `aria-describedby`, to its trigger rather than its root, through `widgetAriaProps()` ([#5355](https://github.com/rjsf-team/react-jsonschema-form/issues/5355), [#5357](https://github.com/rjsf-team/react-jsonschema-form/issues/5357))
 
+- Fixed `NativeSelectWidget` dropping caller-provided `aria-label` and `aria-describedby`. Date and time parts now keep their accessible names and field descriptions when it replaces `SelectWidget` in `AltDateWidget` ([#5505](https://github.com/rjsf-team/react-jsonschema-form/issues/5505))
+
 ## @rjsf/core
 
 - **BREAKING CHANGE:** `GridType` and `Operators` are now `as const` objects with same-named union types instead of `enum`s, so the source is valid under Node's type stripping. Values and `GridType.ROW`-style member access are unchanged; code that used a member as a type must write `typeof GridType.ROW` instead of `GridType.ROW` ([#5244](https://github.com/rjsf-team/react-jsonschema-form/pull/5244))
