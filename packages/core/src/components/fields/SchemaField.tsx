@@ -56,12 +56,13 @@ import {
   uiBooleanOption,
 } from '@rjsf/utils';
 
-import fieldLabelForLog from '../../fieldLabelForLog.ts';
+import fieldLabelForLog, { entryLabelForLog } from '../../fieldLabelForLog.ts';
 import hasOptionLabels from '../../hasOptionLabels.ts';
 import { useShownOption } from '../../hooks/useOptionSelection.ts';
 import useUiState from '../../hooks/useUiState.ts';
 import { retrievedOptionsOf } from '../uiState.ts';
 import UiStateContext from '../UiStateContext.ts';
+import AdditionalPropertyDepthsContext from './AdditionalPropertyDepthsContext.ts';
 import {
   getDeprecatedTemplateProps,
   getFieldErrorProps,
@@ -75,6 +76,8 @@ import NamedFieldContext from './NamedFieldContext.ts';
 import type { NamedFieldPath } from './NamedFieldContext.ts';
 import PresentationContext, { useInheritedPresentation } from './PresentationContext.ts';
 import ShownOptionContext from './ShownOptionContext.ts';
+import TemplateWarnEntryContext from './TemplateWarnEntryContext.ts';
+import useAdditionalDepths from './useAdditionalDepths.ts';
 import useSchemaFieldPresentation from './useSchemaFieldPresentation.ts';
 
 /** The map of component type to FieldName */
@@ -700,6 +703,9 @@ export function useSchemaFieldPlan<
     !schemaUtils.canExpand(fieldSchema, fieldUiSchema, formData);
   const plannedAsOptions = fieldToRender?.isWithheld === true || isPureUnion;
   const renderedComponent = fieldToRender?.FieldComponent;
+  // The `SchemaField` that named the field takes its own errors out of the `errorSchema` it hands on, and passes them
+  // to the field framed inside its template through the context, whatever the named field does with its `rawErrors`
+  const ownErrors = framedAbove ? namedHere?.errors : errorSchema?.__errors;
   const { presentation, labelPlacement } = useSchemaFieldPresentation<T, S, F>({
     id: fieldId,
     // The parts the field draws itself render under its own id, unless it is planned as the field rendering the options
@@ -714,7 +720,7 @@ export function useSchemaFieldPlan<
     showLabel,
     description: fieldDescription,
     help: ownUiOptions.help,
-    errors: errorSchema?.__errors,
+    errors: ownErrors,
     hideError,
     hidden: hidden || isOptedOut,
     required: effectiveRequired,
@@ -745,6 +751,7 @@ export function useSchemaFieldPlan<
     renderedComponent,
     presentation,
     labelPlacement,
+    ownErrors,
     xxxOfOptions,
     uiState,
     ownsUiState,
@@ -779,6 +786,7 @@ function SchemaFieldRender<
     onKeyRenameBlur,
     onRemoveProperty,
     propertyNamesEnum,
+    keyNotAllowed,
     required = false,
     registry,
   } = props;
@@ -808,6 +816,7 @@ function SchemaFieldRender<
     plannedAsOptions,
     renderedComponent,
     presentation,
+    ownErrors,
     xxxOfOptions,
     uiState,
     ownsUiState,
@@ -829,8 +838,12 @@ function SchemaFieldRender<
     [namedAbove, rendersNamedField, fieldPath, namedFieldAbove],
   );
   const namedFieldPath = useMemo<NamedFieldPath | undefined>(
-    () => (rendersNamedField ? { fieldPath, framedAbove: true, optionsRendered: hasOptions } : ownNamedFieldPath),
-    [rendersNamedField, fieldPath, hasOptions, ownNamedFieldPath],
+    () =>
+      rendersNamedField
+        ? // The options beside the named field hand its errors to the selected option, as its `rawErrors` leave them out
+          { fieldPath, framedAbove: true, optionsRendered: hasOptions, errors: hasOptions ? undefined : ownErrors }
+        : ownNamedFieldPath,
+    [rendersNamedField, fieldPath, hasOptions, ownErrors, ownNamedFieldPath],
   );
 
   /** Intermediary `onChange` handler for field components that will inject the `id` of the current field into the
@@ -895,6 +908,18 @@ function SchemaFieldRender<
     [presentationBelow, optionsPresentation, isContainer, presentation],
   );
 
+  // A field a named one frames takes its own errors from the context, as its `errorSchema` is handed on without them, so
+  // they are put back for the options, which hand them to the selected option
+  const optionsErrorSchema = useMemo(
+    () => (framedAbove && ownErrors ? { ...errorSchema, __errors: ownErrors } : errorSchema),
+    [framedAbove, ownErrors, errorSchema],
+  );
+
+  const optionEntryLabel = use(TemplateWarnEntryContext);
+  // An additional property's own key, and the keys above a field nested beneath one, collapse like array indexes:
+  // every extra key renders the one entry, so a mistake in it warns once rather than once per key
+  const additionalDepths = useAdditionalDepths(schema, fieldPath);
+
   // Stop $ref cycles: `retrieveSchema()` hands out a property whose $ref leads back round a recursion with this flag,
   // which is when the field is left unresolved above. The check must come after all hook calls to satisfy React's
   // rules of hooks.
@@ -906,9 +931,16 @@ function SchemaFieldRender<
   // than leave each theme's `ObjectFieldTemplate` to tell that an object it is handed is one and drop its empty frame
   const FieldComponent = plannedAsOptions ? RenderNothing : fieldToRender.FieldComponent;
 
+  // Names the uiSchema entry rather than the field in a template-override warning, so an `items` or
+  // `additionalProperties` mistake warns once, not once per row or extra key; the label is built only when an
+  // override is actually invalid. Rendered as a shown `anyOf`/`oneOf` option, the field renders at the option
+  // field's own path, so it is handed the option entry's label rather than name the entry above itself
+  const templateEntryLabel =
+    optionEntryLabel ?? (() => entryLabelForLog(fieldPath, registry.globalFormOptions, additionalDepths));
   const { FieldTemplate, DescriptionFieldTemplate, FieldHelpTemplate, FieldErrorTemplate } = getTemplates<T, S, F>(
     registry,
     uiOptions,
+    templateEntryLabel,
   );
 
   // A field the options give way to renders the choice between them, so with no options it has nothing to choose, which
@@ -954,11 +986,7 @@ function SchemaFieldRender<
     XxxOfField = xxxOfKey === ANY_OF_KEY ? _AnyOfField : _OneOfField;
   }
 
-  const { __errors: ownErrorSchemaErrors, ...fieldErrorSchema } = errorSchema ?? {};
-  // The `SchemaField` that named the field hands it the field's own errors as `rawErrors`, taken out of its
-  // `errorSchema`, and that is how a named field passes them on to the field it renders
-  // oxlint-disable-next-line typescript/no-deprecated -- the one prop a named field hands the field's own errors on in
-  const __errors = framedAbove ? props.rawErrors : ownErrorSchemaErrors;
+  const { __errors: _errorSchemaErrors, ...fieldErrorSchema } = errorSchema ?? {};
 
   const fieldComponent = (
     <FieldComponent
@@ -974,7 +1002,7 @@ function SchemaFieldRender<
       autofocus={autofocus}
       errorSchema={fieldErrorSchema as ErrorSchema}
       // The `XxxOfField` hands the field's own errors to the selected option and its selector
-      {...getFieldErrorProps<T, S, F>(XxxOfField ? undefined : __errors)}
+      {...getFieldErrorProps<T, S, F>(XxxOfField ? undefined : ownErrors)}
       presentation={presentation}
     />
   );
@@ -993,9 +1021,9 @@ function SchemaFieldRender<
   const description = templateDescription?.text ?? '';
 
   // From its own errors and `ui:hideError`, as the deprecated `rawErrors` its template is handed are, rather than from
-  // its plan, which beneath an `anyOf`/`oneOf` field takes the errors as the field above shows them. Where the option's
-  // `ui:hideError` differs from the field above's, the option's own wins here
-  const hasErrors = !hideError && (__errors?.length ?? 0) > 0;
+  // its plan, which beneath an `anyOf`/`oneOf` field takes the errors as the field above shows them where it does. Where
+  // the option's `ui:hideError` differs from the field above's, the option's own wins here
+  const hasErrors = !hideError && (ownErrors?.length ?? 0) > 0;
 
   const helpComponent = (
     <FieldHelpTemplate
@@ -1033,7 +1061,7 @@ function SchemaFieldRender<
     help: helpComponent,
     rawHelp: help,
     errors: errorsComponent,
-    ...getDeprecatedTemplateProps<T, S, F>(presentation, __errors, hideError),
+    ...getDeprecatedTemplateProps<T, S, F>(presentation, ownErrors, hideError),
     errorSchema,
     fieldPath,
     id: fieldId,
@@ -1045,10 +1073,12 @@ function SchemaFieldRender<
     onKeyRenameBlur,
     onRemoveProperty,
     propertyNamesEnum,
+    keyNotAllowed,
     required: effectiveRequired,
     disabled,
     readonly,
     hideError,
+    hasErrors,
     presentation,
     classNames: getFieldClassNames<S>(schema, hasErrors, uiOptions.classNames),
     style: uiOptions.style,
@@ -1061,40 +1091,45 @@ function SchemaFieldRender<
   };
 
   // The named-field context is provided whether or not a field is named here, since adding or removing a provider would
-  // remount everything below it
+  // remount everything below it. The template-warning entry label is reset the same way: it belongs to this field's
+  // own check, and a field below names the entry it is rendered from, not the option entry this one was handed
   return withUiState(
-    <FieldTemplate {...fieldProps}>
-      <>
-        {field}
-        {XxxOfField && (
-          <NamedFieldContext value={ownNamedFieldPath}>
-            <ShownOptionContext value={shownOption}>
-              <PresentationContext value={optionsBelow}>
-                <XxxOfField
-                  name={name}
-                  disabled={disabled}
-                  readonly={readonly}
-                  hideError={hideError}
-                  errorSchema={errorSchema}
-                  formData={formData}
-                  fieldPath={fieldPath}
-                  id={fieldId}
-                  onBlur={props.onBlur}
-                  onChange={handleOptionFieldChange}
-                  onFocus={props.onFocus}
-                  options={xxxOfOptions}
-                  registry={registry}
-                  required={effectiveRequired}
-                  schema={schema}
-                  uiSchema={uiSchema}
-                  presentation={optionsPresentation}
-                />
-              </PresentationContext>
-            </ShownOptionContext>
-          </NamedFieldContext>
-        )}
-      </>
-    </FieldTemplate>,
+    <TemplateWarnEntryContext value={undefined}>
+      <AdditionalPropertyDepthsContext value={additionalDepths}>
+        <FieldTemplate {...fieldProps}>
+          <>
+            {field}
+            {XxxOfField && (
+              <NamedFieldContext value={ownNamedFieldPath}>
+                <ShownOptionContext value={shownOption}>
+                  <PresentationContext value={optionsBelow}>
+                    <XxxOfField
+                      name={name}
+                      disabled={disabled}
+                      readonly={readonly}
+                      hideError={hideError}
+                      errorSchema={optionsErrorSchema}
+                      formData={formData}
+                      fieldPath={fieldPath}
+                      id={fieldId}
+                      onBlur={props.onBlur}
+                      onChange={handleOptionFieldChange}
+                      onFocus={props.onFocus}
+                      options={xxxOfOptions}
+                      registry={registry}
+                      required={effectiveRequired}
+                      schema={schema}
+                      uiSchema={uiSchema}
+                      presentation={optionsPresentation}
+                    />
+                  </PresentationContext>
+                </ShownOptionContext>
+              </NamedFieldContext>
+            )}
+          </>
+        </FieldTemplate>
+      </AdditionalPropertyDepthsContext>
+    </TemplateWarnEntryContext>,
   );
 }
 

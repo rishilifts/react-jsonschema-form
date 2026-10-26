@@ -29,6 +29,8 @@ import { displaysLabel, getWidgetErrorProps, getWidgetLabelProps } from './field
 import formDataForNewOption from './formDataForNewOption.ts';
 import { lookUpUiField } from './namedField.ts';
 import NamedFieldContext from './NamedFieldContext.ts';
+import TemplateWarnEntryContext from './TemplateWarnEntryContext.ts';
+import useAdditionalDepths from './useAdditionalDepths.ts';
 
 /** Returns the field's `uiSchema` for an option that declares none of its own, without the field's title and
  * description, which the field's plan already carries to the option's, so the option keeps the title and description
@@ -141,12 +143,13 @@ function AnyOfField<T = unknown, S extends StrictRJSFSchema = RJSFSchema, F exte
   // Below a field named for this path the option renders as though no field were named, which its `SchemaField` can't
   // tell apart from a `uiSchema` it inherits, so a field the option's own entry names is warned about here instead,
   // unless it is `SchemaField`, which renders the option the same either way
+  const additionalDepths = useAdditionalDepths(schema, fieldPath);
   const namedForPath = use(NamedFieldContext)?.fieldPath === fieldPath;
   if (rendersOption && namedForPath && optionUiSchema !== uiSchema) {
     const optionField = getUiOptions<T, S, F>(optionUiSchema).field;
     if (optionField && lookUpUiField<T, S, F>(optionField, fields) !== fields.SchemaField) {
       logOnce(
-        `ui:field in uiSchema.${xxxOfKey}[${selectedOption}] for ${entryLabelForLog(fieldPath, globalFormOptions)} is ` +
+        `ui:field in uiSchema.${xxxOfKey}[${selectedOption}] for ${entryLabelForLog(fieldPath, globalFormOptions, additionalDepths)} is ` +
           'ignored, since a field is already named for that path, so the option is rendered as though no ui:field ' +
           'were given.',
       );
@@ -159,6 +162,28 @@ function AnyOfField<T = unknown, S extends StrictRJSFSchema = RJSFSchema, F exte
     }
     return option ? getRenderedOptionUiSchema<T, S, F>(schema, option, uiSchema, optionUiSchema) : optionUiSchema;
   }, [optionUiSchema, uiSchema, schema, option]);
+
+  // The option's `SchemaField` renders at this field's own `fieldPath`, so left to its own path its
+  // template-override warnings would name this field's entry, and the two entries' mistakes would read as one under
+  // `logOnce()`. It is handed the option entry's label instead, the way the `ui:field` warning above names it.
+  // Memoized: a fresh label each render would re-render the option past its `memo`, and the label is read only when
+  // an override is actually invalid
+  const optionEntryLabel = useMemo(() => {
+    if (!rendersOption || optionUiSchema === uiSchema) {
+      return undefined;
+    }
+    return () =>
+      `the uiSchema.${xxxOfKey}[${selectedOption}] entry of ${entryLabelForLog(fieldPath, globalFormOptions, additionalDepths)}`;
+  }, [
+    rendersOption,
+    optionUiSchema,
+    uiSchema,
+    xxxOfKey,
+    selectedOption,
+    fieldPath,
+    globalFormOptions,
+    additionalDepths,
+  ]);
 
   /** Callback handler to remember what the currently selected option is. In addition to that the `formData` is updated
    * to remove properties that are not part of the newly selected option schema, and then the updated data is passed to
@@ -307,7 +332,9 @@ function AnyOfField<T = unknown, S extends StrictRJSFSchema = RJSFSchema, F exte
     ) : undefined;
 
   const optionsSchemaField = rendersOption ? (
-    <SchemaFieldComponent {...props} schema={renderedOption} uiSchema={optionFieldUiSchema} />
+    <TemplateWarnEntryContext value={optionEntryLabel}>
+      <SchemaFieldComponent {...props} schema={renderedOption} uiSchema={optionFieldUiSchema} />
+    </TemplateWarnEntryContext>
   ) : null;
 
   return (
